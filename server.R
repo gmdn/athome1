@@ -171,7 +171,7 @@ shinyServer(function(input, output, session) {
     
   })
   
-  coordinates <- reactive({
+  estimates <- reactive({
     
     ## get relevance assessments
     qrels <- callJudge()
@@ -205,18 +205,55 @@ shinyServer(function(input, output, session) {
     theta_relevant <- (colSums(dtmBinSparse[relevance_judgement == 1, ]) + alpha_relevant) / (numOfRelevantDocuments + alpha_relevant + beta_relevant)
     theta_nonrelevant <- (colSums(dtmBinSparse[relevance_judgement < 1, ]) + alpha_nonrelevant) / (num_of_documents - numOfRelevantDocuments + alpha_nonrelevant + beta_nonrelevant)
     
-    ## BIM weight for relevant and nonrelevant set
-    bim_relevant <- log(theta_relevant) - log(1 - theta_relevant)
-    bim_nonrelevant <- log(theta_nonrelevant) - log(1 - theta_nonrelevant)
+    return(list(relevant = theta_relevant,
+                nonrelevant = theta_nonrelevant))
     
+    
+  })
+  
+  output$features <- renderTable({
+    
+    ## estimate parameters
+    theta <- estimates()
+    
+    ## select features
+    p_q <- theta$relevant - theta$nonrelevant
+    features <- head(order(p_q, decreasing = TRUE), 20)
+    
+    as.data.frame(dtmTf$dimnames$Terms[features])
+    
+  })
+  
+  coordinates <- reactive({
+    
+    ## estimate parameters
+    theta <- estimates()
+
+    ## select features
+    p_q <- theta$relevant - theta$nonrelevant
+    features <- head(order(p_q, decreasing = TRUE), input$features)
+    
+    ## BIM weight for relevant and nonrelevant set
+    bim_relevant <- log(theta$relevant[features]) - log(1 - theta$relevant[features])
+    bim_nonrelevant <- log(theta$nonrelevant[features]) - log(1 - theta$nonrelevant[features])
+
     ## update coordinates
-    x <- as.vector(bm25_sparse %*% bim_relevant)
-    y <- as.vector(bm25_sparse %*% bim_nonrelevant)
+    #x <- as.vector(bm25_sparse %*% bim_relevant)
+    #y <- as.vector(bm25_sparse %*% bim_nonrelevant)
+    x <- as.vector(bm25_sparse[, features] %*% bim_relevant)
+    y <- as.vector(bm25_sparse[, features] %*% bim_nonrelevant)
     
     return(data.frame(x = x, y = y))
     
   })
   
+  output$features1 <- renderTable({
+    
+    feats <- features()
+    
+    as.data.frame(dtmTf$dimnames$Terms[feats])
+    
+  })
   
   ## compute 
   classify <- reactive({

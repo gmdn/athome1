@@ -67,7 +67,14 @@ shinyUI(fluidPage(
                   label = "range",
                   min = -5000,
                   max = 100,
-                  value = c(-2000, 0),
+                  value = c(-1000, 100),
+                  step = 100),
+    
+      sliderInput(inputId = "features",
+                  label = "features",
+                  min = 100,
+                  max = 10000,
+                  value = 10000,
                   step = 100)
       
       
@@ -103,8 +110,10 @@ shinyUI(fluidPage(
                            value = 0,
                            step = 5)
         )
-      )
+      ),
       
+      tableOutput("features")
+
     )
   )
 ))
