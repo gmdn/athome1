@@ -392,7 +392,7 @@ shinyServer(function(input, output, session) {
     judge$doc_idx <- union(doc_to_judge1, doc_to_judge2)
     
     ## documents to judge
-    potentially_true_positives <- length(doc_to_judge)
+    potentially_true_positives <- length(judge$doc_idx)
     
     ## already judged 
     already_judged <- relevant_found + nonrelevant_found

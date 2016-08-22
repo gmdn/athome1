@@ -106,7 +106,7 @@ shinyUI(fluidPage(
                            min = -1000,
                            max = 100,
                            value = 0,
-                           step = 5)
+                           step = 2.5)
         )
       ),
       
