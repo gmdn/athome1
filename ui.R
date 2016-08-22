@@ -23,7 +23,7 @@ shinyUI(fluidPage(
         column(width = 6,
                textInput(inputId = "runid",
                          label = h5("runid"),
-                         value = "ZkC36NYlNfiw",
+                         value = "ZEeu8VW86JT9",
                          placeholder = "Enter runid...")
         ),
         column(width = 6, 
@@ -51,11 +51,7 @@ shinyUI(fluidPage(
                textOutput(outputId = "outSearch")
         )
       ),
-      
 
-      
-      
-      
       fluidRow(
         column(width = 6, actionButton(inputId = "judge", label = "judge")
         ),
@@ -63,19 +59,21 @@ shinyUI(fluidPage(
         )
       ),
       
+      actionButton(inputId = "auto_judge", label = "automatic judge"),
+      
       sliderInput(inputId = "range",
                   label = "range",
-                  min = -5000,
+                  min = -2000,
                   max = 100,
-                  value = c(-1000, 100),
-                  step = 100),
+                  value = c(-500, 200),
+                  step = 50),
     
       sliderInput(inputId = "features",
                   label = "features",
-                  min = 100,
-                  max = 10000,
-                  value = 10000,
-                  step = 100)
+                  min = 1000,
+                  max = 50000,
+                  value = 50000,
+                  step = 1000)
       
       
     ),
@@ -97,10 +95,10 @@ shinyUI(fluidPage(
         column(width = 6,
                sliderInput(inputId = "rotate",
                            label = "rotate",
-                           min = 0.5,
-                           max = 3,
-                           value = 1,
-                           step = 0.01)
+                           min = 1,
+                           max = 4,
+                           value = c(3, 4),
+                           step = 0.05)
         ),
         column(width = 6,
                sliderInput(inputId = "shift",
