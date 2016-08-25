@@ -74,8 +74,6 @@ shinyServer(function(input, output, session) {
     ## find the indexes of the terms (stems) involved (query + expansion)
     idx_query_terms <- which(is.element((dtmTf$dimnames$Terms), query_stems))
     
-    print(idx_query_terms)
-    
     ## set the number of top k documents to assess
     #k <- input$topk
     
@@ -88,8 +86,6 @@ shinyServer(function(input, output, session) {
       
       ## get the number of rel docs
       num_of_rel_documents <- sum(relevance_judgement == 1)
-      
-      print(num_of_rel_documents)
       
       if(num_of_rel_documents > 1) {
         theta_relevant <- (colSums(dtmBinSparse[relevance_judgement == 1, ]) + alpha_relevant) / (num_of_rel_documents + alpha_relevant + beta_relevant)  
@@ -135,8 +131,6 @@ shinyServer(function(input, output, session) {
       #ranking <- order(y)
       #ranking <- order(y - x)
       
-      print(head(ranking))
-      
       ## select documents with a score different from zero.
       # no_zero_docs <- which(y != 0)
       
@@ -178,7 +172,7 @@ shinyServer(function(input, output, session) {
     #load("../data/9nkm9nhDx6HC/athome101/1.RData")
     
     ## initialize qrels
-    new_qrels <- data.frame(docids = character(), judgement = integer())
+    qrels <- data.frame(docids = character(), judgement = integer())
     
     ## call the server if there is any document to judge
     if(length(judge$doc_idx) > 0) {
@@ -192,17 +186,17 @@ shinyServer(function(input, output, session) {
                 encode = "json")
       
       ## transform JSON to data.frame
-      new_qrels <- fromJSON(content(r, "text", encoding = "ISO-8859-1"))
+      qrels <- fromJSON(content(r, "text", encoding = "ISO-8859-1"))
       
       ## save qrels on disk
-      save(new_qrels,
+      save(qrels,
            file = file.path("..", "data", input$runid, input$topics, paste(feedback_round, "RData", sep = ".")))
       
     }
     
     #load("../data/ZkC36NYlNfiw/athome101/1.RData")
     
-    return(new_qrels)
+    return(qrels)
     
   })
   
