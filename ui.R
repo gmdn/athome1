@@ -45,7 +45,7 @@ shinyUI(fluidPage(
         column(width = 4,
                sliderInput(inputId = "topk",
                            label = NULL, #h4("top k"),
-                           min = 100, max = 1000, value = 100, step = 100)
+                           min = 50, max = 500, value = 50, step = 50)
         ),
         column(width = 4,
                textOutput(outputId = "outSearch")

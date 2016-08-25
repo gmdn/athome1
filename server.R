@@ -16,9 +16,9 @@ shinyServer(function(input, output, session) {
   cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
   
   ## define smoothing parameters (R: relevant, N: non relevant)
-  alpha_relevant <- 0.1
+  alpha_relevant <- 1
   beta_relevant  <- 1
-  alpha_nonrelevant <- 0.01
+  alpha_nonrelevant <- 1
   beta_nonrelevant  <- 1
   
   ## initialize relevance vector
@@ -74,50 +74,90 @@ shinyServer(function(input, output, session) {
     ## find the indexes of the terms (stems) involved (query + expansion)
     idx_query_terms <- which(is.element((dtmTf$dimnames$Terms), query_stems))
     
+    print(idx_query_terms)
+    
     ## set the number of top k documents to assess
     #k <- input$topk
     
     ## initialize docids and indexes
-    docids_topk <- NULL
+    #docids_topk <- NULL
     idx_doc_topk <- NULL
     
     ## if there are query terms
     if (length(idx_query_terms) > 0) {
       
-      ## update theta negative
-      theta_nonrelevant <- (colSums(dtmBinSparse) + alpha_nonrelevant) / (num_of_documents + alpha_nonrelevant + beta_nonrelevant)
+      ## get the number of rel docs
+      num_of_rel_documents <- sum(relevance_judgement == 1)
       
-      ## BIM weight for non relevant set
-      bim_negative <- log(theta_nonrelevant) - log(1 - theta_nonrelevant)
+      print(num_of_rel_documents)
+      
+      if(num_of_rel_documents > 1) {
+        theta_relevant <- (colSums(dtmBinSparse[relevance_judgement == 1, ]) + alpha_relevant) / (num_of_rel_documents + alpha_relevant + beta_relevant)  
+      } else if (num_of_rel_documents == 1) {
+        theta_relevant <- (dtmBinSparse[relevance_judgement == 1, ] + alpha_relevant) / (num_of_rel_documents + alpha_relevant + beta_relevant)  
+      } else {
+        theta_relevant <- rep(alpha_relevant / (alpha_relevant + beta_relevant), times = dim(dtmBinSparse)[2])
+      }
+      
+      ## update theta negative
+      theta_nonrelevant <- (colSums(dtmBinSparse) + alpha_nonrelevant) / (num_of_documents - num_of_rel_documents + alpha_nonrelevant + beta_nonrelevant)
+      
+      ## build coordinates
+      features <- idx_query_terms
+      
+      if(feedback_round > 0) {
+        ## select features
+        p_q <- theta_relevant - theta_nonrelevant
+        features <- union(idx_query_terms, head(order(p_q, decreasing = TRUE), 10))
+        
+      }
+      
+      ## get BIM scores
+      bim_relevant <- log(theta_relevant[features]) - log(1 - theta_relevant[features])
+      bim_nonrelevant <- log(theta_nonrelevant[features]) - log(1 - theta_nonrelevant[features])
+      
+      #x <- as.vector(bm25_sparse[, idx_query_terms] %*% bim_relevant)
+      #y <- as.vector(bm25_sparse[, idx_query_terms] %*% bim_nonrelevant)
+      x <- as.vector(bm25_sparse[, features] %*% bim_relevant)
+      y <- as.vector(bm25_sparse[, features] %*% bim_nonrelevant)
+      
+      idx_doc_tojudge <- which(relevance_judgement == 0)
       
       ## update coordinate y
       ## for the element-wise moltiplication between a matrix A (m x n) and
       ## a vector B (n), we first transpose the matrix, t(A) * B.
       ## We sum the columns to obtain the weight for each document.
-      y <- colSums(t(bm25_sparse[, idx_query_terms]) * bim_negative[idx_query_terms])
+      #y <- colSums(t(bm25_sparse[, idx_query_terms]) * bim_negative[idx_query_terms])
       
       ## rank the documents (since order() it's in ascending order,
       ## the smallest is the first in the ranking list)
-      ranking <- order(y)
+      ranking <- order(y[idx_doc_tojudge] - x[idx_doc_tojudge])
+      #ranking <- order(y)
+      #ranking <- order(y - x)
+      
+      print(head(ranking))
       
       ## select documents with a score different from zero.
-      no_zero_docs <- which(y != 0)
+      # no_zero_docs <- which(y != 0)
       
       ## check if k is largest than the number of no_zero_docs
       ## then get the ids of the top documents
-      if(input$topk > length(no_zero_docs)) {
-        docids_topk <- dtmTf$dimnames$Docs[no_zero_docs]
-        idx_doc_topk <- no_zero_docs
-      } else {
-        docids_topk <- dtmTf$dimnames$Docs[ranking[1:input$topk]]
-        idx_doc_topk <- ranking[1:input$topk]
-      }
+#       if(input$topk > length(no_zero_docs)) {
+#         #docids_topk <- dtmTf$dimnames$Docs[no_zero_docs]
+#         idx_doc_topk <- no_zero_docs
+#       } else {
+#         #docids_topk <- dtmTf$dimnames$Docs[ranking[1:input$topk]]
+#         idx_doc_topk <- ranking[1:input$topk]
+#       }
+      idx_doc_topk <- idx_doc_tojudge[ranking[1:input$topk]]
       
     }
     
+    #judge$doc_idx <- idx_doc_topk
+    
     ## exclude documents that have already been judged
-    judge$doc_idx <- setdiff(idx_doc_topk,
-                             which(relevance_judgement != 0))
+    #judge$doc_idx <- setdiff(idx_doc_topk, which(relevance_judgement != 0))
+    judge$doc_idx <- idx_doc_topk
     
   })
   
@@ -166,6 +206,7 @@ shinyServer(function(input, output, session) {
     
   })
   
+  
   ## iterate over docs to judge
   callAutomaticJudge <- observeEvent(input$auto_judge, {
     
@@ -180,18 +221,28 @@ shinyServer(function(input, output, session) {
     
     for(rotation in seq(input$rotate[2], input$rotate[1], by = -0.05)) {
       
-      print(rotation)
+      print(paste("rotation = ", rotation))
+      print(paste("shift = ", input$shift))
       
       ## call the server if there is any document to judge
       repeat {
         
         ## we need to recompute the coordinates (even though we already have done it)
         ## compute total number of relevant documents judged so far
-        num_of_rel_docs <- sum(relevance_judgement == 1)
+        num_of_rel_documents <- sum(relevance_judgement == 1)
         
         ## estimate the parameters for the relevant set
-        theta_relevant <- (colSums(dtmBinSparse[relevance_judgement == 1, ]) + alpha_relevant) / (num_of_rel_docs + alpha_relevant + beta_relevant)
-        theta_nonrelevant <- (colSums(dtmBinSparse[relevance_judgement < 1, ]) + alpha_nonrelevant) / (num_of_documents - num_of_rel_docs + alpha_nonrelevant + beta_nonrelevant)
+        #theta_relevant <- (colSums(dtmBinSparse[relevance_judgement == 1, ]) + alpha_relevant) / (num_of_rel_documents + alpha_relevant + beta_relevant)
+        ## estimate the parameters for the relevant set
+        if(num_of_rel_documents > 1) {
+          theta_relevant <- (colSums(dtmBinSparse[relevance_judgement == 1, ]) + alpha_relevant) / (num_of_rel_documents + alpha_relevant + beta_relevant)  
+        } else if (num_of_rel_documents == 1) {
+          theta_relevant <- (dtmBinSparse[relevance_judgement == 1, ] + alpha_relevant) / (num_of_rel_documents + alpha_relevant + beta_relevant)  
+        } else {
+          theta_relevant <- alpha_relevant / (alpha_relevant + beta_relevant)
+        }
+
+        theta_nonrelevant <- (colSums(dtmBinSparse[relevance_judgement < 1, ]) + alpha_nonrelevant) / (num_of_documents - num_of_rel_documents + alpha_nonrelevant + beta_nonrelevant)
         
         ## select features
         p_q <- theta_relevant - theta_nonrelevant
@@ -231,15 +282,16 @@ shinyServer(function(input, output, session) {
           ## transform JSON to data.frame
           qrels <- fromJSON(content(r, "text", encoding = "ISO-8859-1"))
           
+          ## add info about rotation and shift
+          qrels$rotation <- rep(rotation, times = dim(qrels)[1])
+          qrels$shift <- rep(input$shift, times = dim(qrels)[1])
+          
           ## save qrels on disk
           save(qrels,
                file = file.path("..", "data", input$runid, input$topics,
                                 paste(feedback_round, feedback_sub, "RData", sep = ".")))
           
           print(paste("new rel docs = ", sum(qrels$judgement == 1)))
-          
-          print(file.path("..", "data", input$runid, input$topics,
-                          paste(feedback_round, feedback_sub, "RData", sep = ".")))
           
           ## find rel and non rel docs
           idx_doc_rel <- which(is.element(dtmTf$dimnames$Docs, qrels$docid[qrels$judgement == 1]))
@@ -278,6 +330,7 @@ shinyServer(function(input, output, session) {
     
   })
   
+  
   estimates <- reactive({
     
     ## get relevance assessments
@@ -306,11 +359,18 @@ shinyServer(function(input, output, session) {
          file = file.path("..", "data", input$runid, input$topics, paste("relevance_judgement", "RData", sep = ".")))
     
     ## compute total number of relevant documents judged
-    numOfRelevantDocuments <- sum(relevance_judgement == 1)
+    num_of_rel_documents <- sum(relevance_judgement == 1)
     
     ## estimate the parameters for the relevant set
-    theta_relevant <- (colSums(dtmBinSparse[relevance_judgement == 1, ]) + alpha_relevant) / (numOfRelevantDocuments + alpha_relevant + beta_relevant)
-    theta_nonrelevant <- (colSums(dtmBinSparse[relevance_judgement < 1, ]) + alpha_nonrelevant) / (num_of_documents - numOfRelevantDocuments + alpha_nonrelevant + beta_nonrelevant)
+    if(num_of_rel_documents > 1) {
+      theta_relevant <- (colSums(dtmBinSparse[relevance_judgement == 1, ]) + alpha_relevant) / (num_of_rel_documents + alpha_relevant + beta_relevant)  
+    } else if (num_of_rel_documents == 1) {
+      theta_relevant <- (dtmBinSparse[relevance_judgement == 1, ] + alpha_relevant) / (num_of_rel_documents + alpha_relevant + beta_relevant)  
+    } else {
+      theta_relevant <- alpha_relevant / (num_of_rel_documents + alpha_relevant + beta_relevant)
+    }
+    
+    theta_nonrelevant <- (colSums(dtmBinSparse[relevance_judgement < 1, ]) + alpha_nonrelevant) / (num_of_documents - num_of_rel_documents + alpha_nonrelevant + beta_nonrelevant)
     
     return(list(relevant = theta_relevant,
                 nonrelevant = theta_nonrelevant))
@@ -388,11 +448,12 @@ shinyServer(function(input, output, session) {
     doc_to_judge1 <- idx_doc_tojudge[which(coords$y[idx_doc_tojudge] < input$rotate[1] * coords$x[idx_doc_tojudge] + input$shift)]
     doc_to_judge2 <- idx_doc_tojudge[which(coords$y[idx_doc_tojudge] < input$rotate[2] * coords$x[idx_doc_tojudge] + input$shift)]
 
-    ## update list of 
-    judge$doc_idx <- union(doc_to_judge1, doc_to_judge2)
-    
     ## documents to judge
-    potentially_true_positives <- length(judge$doc_idx)
+    #potentially_true_positives <- length(judge$doc_idx)
+    potentially_true_positives <- union(doc_to_judge1, doc_to_judge2)
+    
+    ## update list of 
+    judge$doc_idx <- potentially_true_positives
     
     ## already judged 
     already_judged <- relevant_found + nonrelevant_found
@@ -405,7 +466,7 @@ shinyServer(function(input, output, session) {
                 false_pos = false_positives,
                 temp_rec = temp_recall,
                 temp_pre = temp_precision,
-                to_judge = potentially_true_positives,
+                to_judge = length(potentially_true_positives),
                 remaning = num_of_documents - already_judged
     ))
     
